@@ -18,10 +18,10 @@ export default function SecurityPage() {
   const [logs, setLogs] = useState<string[]>(baseLogs);
 
   async function simulateFraud() {
-    const res = await fetch("/api/fraud", {
+    const res = await fetch("/api/dashboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ simulateFraud: true })
+      body: JSON.stringify({ action: "simulate", mode: "fraud" })
     });
     const data = await res.json();
     useZyroStore.setState({ fraud: data.fraud, claimStatus: "UNDER_REVIEW" });

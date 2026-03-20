@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { AlertTriangle, CloudFog, CloudRain, Siren, SunMedium, Wallet2 } from "lucide-react";
+import { AlertTriangle, CloudFog, CloudRain, Loader2, Siren, SunMedium, Wallet2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,9 @@ import { useZyroStore } from "@/lib/store";
 import { ClaimStatus } from "@/lib/types";
 import { cn, rupee } from "@/lib/utils";
 
-type SimType = "rain" | "pollution";
+type SimType = "rain" | "pollution" | "fraud";
+
+const CACHE_TTL = 1000 * 60 * 3;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,92 +27,134 @@ export default function DashboardPage() {
     latestPayout,
     claimHistory,
     payoutHistory,
+    dashboardCacheTs,
+    demoMode,
     setRisk,
     setMetrics,
     setClaimStatus,
     setFraud,
-    addClaim,
-    addPayout,
-    hydratePayouts
+    hydrateDashboardLite,
+    hydrateDashboardHeavy
   } = useZyroStore();
-  const [loading, setLoading] = useState(false);
+
+  const [bootLoading, setBootLoading] = useState(false);
+  const [heavyLoading, setHeavyLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const hasLiteData = Boolean(user && plan);
+  const cacheFresh = useMemo(() => Date.now() - dashboardCacheTs < CACHE_TTL, [dashboardCacheTs]);
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-    if (!plan) {
-      router.push("/plans");
-      return;
-    }
+    let mounted = true;
 
-    const loadPayouts = async () => {
-      const res = await fetch("/api/payout");
-      const data = await res.json();
-      hydratePayouts(data.payouts ?? []);
-    };
+    async function loadLite() {
+      if (!mounted) return;
+      setBootLoading(true);
+      try {
+        const query = new URLSearchParams({ lite: "1" });
+        if (user?.id) query.set("userId", user.id);
+        if (demoMode) query.set("demo", "1");
 
-    loadPayouts();
-  }, [user, plan, router, hydratePayouts]);
-
-  async function simulateRisk(mode: SimType) {
-    if (!user || !plan) return;
-    setLoading(true);
-
-    const riskRes = await fetch(`/api/risk?simulate=${mode}`);
-    const riskData = await riskRes.json();
-    setMetrics(riskData.metrics);
-    setRisk(riskData.risk);
-
-    if (riskData.risk === "HIGH") {
-      setClaimStatus("TRIGGERED");
-
-      const fraudRes = await fetch("/api/fraud", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimCount: claimHistory.length + 1 })
-      });
-      const fraudData = await fraudRes.json();
-      setFraud(fraudData.fraud);
-
-      const claimRes = await fetch("/api/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          risk: riskData.risk,
-          fraudStatus: fraudData.fraud.status,
-          coverage: plan.coverage
-        })
-      });
-      const claimData = await claimRes.json();
-      const mappedStatus: ClaimStatus =
-        claimData.claim.status === "APPROVED"
-          ? "APPROVED"
-          : claimData.claim.status === "UNDER_REVIEW"
-            ? "UNDER_REVIEW"
-            : "TRIGGERED";
-      setClaimStatus(mappedStatus);
-      addClaim(claimData.claim);
-
-      if (claimData.payout) {
-        addPayout(claimData.payout);
+        const res = await fetch(`/api/dashboard?${query.toString()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load dashboard");
+        const data = await res.json();
+        hydrateDashboardLite(data);
+      } catch {
+        if (!user) router.push("/login");
+      } finally {
+        if (mounted) setBootLoading(false);
       }
     }
 
-    setLoading(false);
+    if (!hasLiteData || !cacheFresh) {
+      loadLite();
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [hasLiteData, cacheFresh, user, router, demoMode, hydrateDashboardLite]);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+
+    const timer = setTimeout(async () => {
+      if (!mounted) return;
+      setHeavyLoading(true);
+      try {
+        const query = new URLSearchParams({ userId: user.id });
+        if (demoMode) query.set("demo", "1");
+        const res = await fetch(`/api/dashboard?${query.toString()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load heavy dashboard data");
+        const data = await res.json();
+        hydrateDashboardHeavy(data);
+        setMetrics(data.metrics);
+        setRisk(data.risk);
+        if (data.fraud) setFraud(data.fraud);
+      } catch {
+        // Keep existing cached state if background load fails.
+      } finally {
+        if (mounted) setHeavyLoading(false);
+      }
+    }, 50);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [user, demoMode, hydrateDashboardHeavy, setMetrics, setRisk, setFraud]);
+
+  async function simulate(mode: SimType) {
+    if (!user || !plan) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "simulate",
+          mode,
+          userId: user.id,
+          coverage: plan.coverage,
+          demo: demoMode
+        })
+      });
+
+      if (!res.ok) throw new Error("Simulation failed");
+
+      const data = await res.json();
+      setMetrics(data.metrics);
+      setRisk(data.risk);
+      setFraud(data.fraud);
+      hydrateDashboardHeavy({
+        claims: data.claims,
+        payouts: data.payouts,
+        payout: data.payout,
+        fraud: data.fraud
+      });
+
+      const nextClaimStatus: ClaimStatus = data.claim
+        ? data.claim.status === "APPROVED"
+          ? "APPROVED"
+          : "UNDER_REVIEW"
+        : mode === "fraud"
+          ? "UNDER_REVIEW"
+          : data.risk === "HIGH"
+            ? "TRIGGERED"
+            : "IDLE";
+
+      setClaimStatus(nextClaimStatus);
+    } catch {
+      // Preserve the current UI state if simulation fails.
+    } finally {
+      setActionLoading(false);
+    }
   }
 
-  async function simulateFraud() {
-    const fraudRes = await fetch("/api/fraud", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ simulateFraud: true })
-    });
-    const fraudData = await fraudRes.json();
-    setFraud(fraudData.fraud);
-    setClaimStatus("UNDER_REVIEW");
+  if (bootLoading && !hasLiteData) {
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -141,16 +185,19 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Demo Controls</CardTitle>
-            <CardDescription>Required hackathon simulation actions</CardDescription>
+            <CardDescription>Single-call scenario simulation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full" disabled={loading} onClick={() => simulateRisk("rain")}>
+            <Button className="w-full" disabled={actionLoading} onClick={() => simulate("rain")}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Simulate Rain
             </Button>
-            <Button className="w-full" variant="outline" disabled={loading} onClick={() => simulateRisk("pollution")}>
+            <Button className="w-full" variant="outline" disabled={actionLoading} onClick={() => simulate("pollution")}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Simulate Pollution
             </Button>
-            <Button className="w-full" variant="secondary" disabled={loading} onClick={simulateFraud}>
+            <Button className="w-full" variant="secondary" disabled={actionLoading} onClick={() => simulate("fraud")}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Simulate Fraud
             </Button>
           </CardContent>
@@ -172,6 +219,7 @@ export default function DashboardPage() {
             <Badge tone={fraud?.status === "FRAUD" ? "danger" : fraud?.status === "UNDER REVIEW" ? "warning" : "success"}>
               {fraud?.status ?? "SAFE"}
             </Badge>
+            {heavyLoading ? <p className="text-xs text-muted-foreground">Refreshing detailed data...</p> : null}
           </CardContent>
         </Card>
 
@@ -209,6 +257,22 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse rounded-xl border border-border/70 bg-muted/40" />
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className="h-56 animate-pulse rounded-xl border border-border/70 bg-muted/40 xl:col-span-2" />
+        <div className="h-56 animate-pulse rounded-xl border border-border/70 bg-muted/40" />
+      </div>
     </div>
   );
 }

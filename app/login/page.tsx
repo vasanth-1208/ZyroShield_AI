@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,11 +14,17 @@ import { useZyroStore } from "@/lib/store";
 export default function LoginPage() {
   const router = useRouter();
   const setUser = useZyroStore((s) => s.setUser);
+  const hydrateDashboardLite = useZyroStore((s) => s.hydrateDashboardLite);
+  const setDemoMode = useZyroStore((s) => s.setDemoMode);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function login(asGuest = false) {
+  useEffect(() => {
+    router.prefetch("/dashboard");
+  }, [router]);
+
+  async function login(asGuest = false, demo = false) {
     if (!asGuest && !email.includes("@")) {
       setError("Enter a valid email address.");
       return;
@@ -28,13 +34,15 @@ export default function LoginPage() {
     setError("");
     const username = asGuest ? "Guest Rider" : email.split("@")[0].replace(/[._-]/g, " ");
     try {
-      const response = await fetch("/api/user", {
+      const response = await fetch("/api/dashboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "login",
           name: username,
           city: "Bengaluru",
-          income: 22000
+          income: 22000,
+          demo
         })
       });
 
@@ -42,9 +50,11 @@ export default function LoginPage() {
         throw new Error("Login failed");
       }
 
-      const data = await response.json();
-      setUser(data.user);
-      router.push("/onboarding");
+      const dashboardData = await response.json();
+      setUser(dashboardData.user);
+      hydrateDashboardLite(dashboardData);
+      setDemoMode(demo);
+      router.push("/dashboard");
     } catch {
       setError("Unable to login right now. Please try again.");
     } finally {
@@ -82,11 +92,15 @@ export default function LoginPage() {
               {error ? <p className="text-sm text-rose-500">{error}</p> : null}
 
               <Button className="w-full" onClick={() => login(false)} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 Continue
-                <ArrowRight className="h-4 w-4" />
               </Button>
               <Button variant="outline" className="w-full" onClick={() => login(true)} disabled={loading}>
                 Continue as Guest
+              </Button>
+              <Button variant="secondary" className="w-full" onClick={() => login(true, true)} disabled={loading}>
+                <Zap className="h-4 w-4" />
+                Instant Demo Mode
               </Button>
 
               <p className="text-center text-xs text-muted-foreground">

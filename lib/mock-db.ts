@@ -1,4 +1,5 @@
 import { ClaimRecord, EnvironmentMetrics, PlanOption, PayoutRecord, UserProfile } from "@/lib/types";
+import { FraudResult } from "@/lib/types";
 
 interface MockDb {
   user: UserProfile | null;
@@ -6,6 +7,7 @@ interface MockDb {
   metrics: EnvironmentMetrics;
   claims: ClaimRecord[];
   payouts: PayoutRecord[];
+  fraud: FraudResult | null;
 }
 
 declare global {
@@ -22,7 +24,8 @@ const seed: MockDb = {
     aqi: 140
   },
   claims: [],
-  payouts: []
+  payouts: [],
+  fraud: null
 };
 
 export const memoryDb = global.zyroMemory ?? seed;
