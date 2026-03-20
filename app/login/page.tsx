@@ -25,20 +25,31 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    setError("");
     const username = asGuest ? "Guest Rider" : email.split("@")[0].replace(/[._-]/g, " ");
+    try {
+      const response = await fetch("/api/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: username,
+          city: "Bengaluru",
+          income: 22000
+        })
+      });
 
-    const response = await fetch("/api/user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: username,
-        city: "Bengaluru",
-        income: 22000
-      })
-    });
-    const data = await response.json();
-    setUser(data.user);
-    router.push("/onboarding");
+      if (!response.ok) {
+        throw new Error("Login failed");
+      }
+
+      const data = await response.json();
+      setUser(data.user);
+      router.push("/onboarding");
+    } catch {
+      setError("Unable to login right now. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

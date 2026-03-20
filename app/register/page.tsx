@@ -23,20 +23,28 @@ export default function RegisterPage() {
       setError("Please provide valid name, city, and monthly income.");
       return;
     }
+    setError("");
+    try {
+      const res = await fetch("/api/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          city: city.trim(),
+          income: Number(income)
+        })
+      });
 
-    const res = await fetch("/api/user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        city: city.trim(),
-        income: Number(income)
-      })
-    });
+      if (!res.ok) {
+        throw new Error("Registration failed");
+      }
 
-    const data = await res.json();
-    setUser(data.user);
-    router.push("/onboarding");
+      const data = await res.json();
+      setUser(data.user);
+      router.push("/onboarding");
+    } catch {
+      setError("Unable to register right now. Please try again.");
+    }
   }
 
   return (

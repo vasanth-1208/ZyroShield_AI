@@ -37,3 +37,4 @@ coverage/
 
 # Optional caches
 .cache/
+.netlify/

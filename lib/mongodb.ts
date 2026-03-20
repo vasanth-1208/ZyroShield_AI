@@ -16,9 +16,18 @@ export async function connectToDatabase() {
   if (cached.conn) return cached.conn;
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, { dbName: "zyroshield" });
+    cached.promise = mongoose.connect(MONGODB_URI, {
+      dbName: "zyroshield",
+      serverSelectionTimeoutMS: 4000
+    });
   }
 
-  cached.conn = await cached.promise;
-  return cached.conn;
+  try {
+    cached.conn = await cached.promise;
+    return cached.conn;
+  } catch (error) {
+    cached.promise = null;
+    console.error("MongoDB unavailable, continuing with in-memory mode.", error);
+    return null;
+  }
 }
