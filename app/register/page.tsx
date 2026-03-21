@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const [city, setCity] = useState("");
   const [income, setIncome] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function submit() {
     if (!name.trim() || !city.trim() || Number(income) <= 0) {
@@ -24,6 +25,7 @@ export default function RegisterPage() {
       return;
     }
     setError("");
+    setLoading(true);
     try {
       const res = await fetch("/api/user", {
         method: "POST",
@@ -44,6 +46,8 @@ export default function RegisterPage() {
       router.push("/onboarding");
     } catch {
       setError("Unable to register right now. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -88,8 +92,8 @@ export default function RegisterPage() {
 
               {error ? <p className="text-sm text-rose-500">{error}</p> : null}
 
-              <Button className="w-full" onClick={submit}>
-                Continue to Onboarding
+              <Button className="w-full" onClick={submit} disabled={loading}>
+                {loading ? "Please wait..." : "Continue to Onboarding"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 Already have an account? <Link href="/login" className="text-primary">Login</Link>

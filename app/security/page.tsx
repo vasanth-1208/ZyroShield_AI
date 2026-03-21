@@ -16,16 +16,22 @@ const baseLogs = [
 export default function SecurityPage() {
   const fraud = useZyroStore((s) => s.fraud);
   const [logs, setLogs] = useState<string[]>(baseLogs);
+  const [loading, setLoading] = useState(false);
 
   async function simulateFraud() {
-    const res = await fetch("/api/dashboard", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "simulate", mode: "fraud" })
-    });
-    const data = await res.json();
-    useZyroStore.setState({ fraud: data.fraud, claimStatus: "UNDER_REVIEW" });
-    setLogs((prev) => [`High-risk spoofing signature detected at ${new Date().toLocaleTimeString()}`, ...prev].slice(0, 8));
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "simulate", mode: "fraud" })
+      });
+      const data = await res.json();
+      useZyroStore.setState({ fraud: data.fraud, claimStatus: "UNDER_REVIEW" });
+      setLogs((prev) => [`High-risk spoofing signature detected at ${new Date().toLocaleTimeString()}`, ...prev].slice(0, 8));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -56,7 +62,9 @@ export default function SecurityPage() {
             <p className="text-sm text-muted-foreground">
               Anti-spoofing combines rider movement confidence, claim frequency, and location anomaly to identify high-risk claims.
             </p>
-            <Button onClick={simulateFraud}>Simulate Fraud</Button>
+            <Button onClick={simulateFraud} disabled={loading}>
+              {loading ? "Please wait..." : "Simulate Fraud"}
+            </Button>
           </CardContent>
         </Card>
 

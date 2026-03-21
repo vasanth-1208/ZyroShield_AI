@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlanOption } from "@/lib/types";
@@ -19,6 +20,7 @@ export default function PlansPage() {
   const router = useRouter();
   const user = useZyroStore((s) => s.user);
   const setPlan = useZyroStore((s) => s.setPlan);
+  const [loadingPlan, setLoadingPlan] = useState<PlanOption["code"] | null>(null);
 
   async function choosePlan(plan: PlanOption) {
     if (!user) {
@@ -26,14 +28,19 @@ export default function PlansPage() {
       return;
     }
 
-    await fetch("/api/plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, ...plan })
-    });
+    setLoadingPlan(plan.code);
+    try {
+      await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, ...plan })
+      });
 
-    setPlan(plan);
-    router.push("/dashboard");
+      setPlan(plan);
+      router.push("/dashboard");
+    } finally {
+      setLoadingPlan(null);
+    }
   }
 
   return (
@@ -71,8 +78,8 @@ export default function PlansPage() {
                       <CheckCircle2 className="h-4 w-4 text-secondary" /> Fraud safeguard
                     </li>
                   </ul>
-                  <Button className="mt-5 w-full" onClick={() => choosePlan(plan)}>
-                    Select {plan.name}
+                  <Button className="mt-5 w-full" onClick={() => choosePlan(plan)} disabled={loadingPlan !== null}>
+                    {loadingPlan === plan.code ? "Please wait..." : `Select ${plan.name}`}
                   </Button>
                 </CardContent>
               </Card>

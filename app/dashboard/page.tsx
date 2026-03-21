@@ -190,15 +190,15 @@ export default function DashboardPage() {
           <CardContent className="space-y-3">
             <Button className="w-full" disabled={actionLoading} onClick={() => simulate("rain")}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Simulate Rain
+              {actionLoading ? "Please wait..." : "Simulate Rain"}
             </Button>
             <Button className="w-full" variant="outline" disabled={actionLoading} onClick={() => simulate("pollution")}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Simulate Pollution
+              {actionLoading ? "Please wait..." : "Simulate Pollution"}
             </Button>
             <Button className="w-full" variant="secondary" disabled={actionLoading} onClick={() => simulate("fraud")}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Simulate Fraud
+              {actionLoading ? "Please wait..." : "Simulate Fraud"}
             </Button>
           </CardContent>
         </Card>

@@ -93,14 +93,14 @@ export default function LoginPage() {
 
               <Button className="w-full" onClick={() => login(false)} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                Continue
+                {loading ? "Please wait..." : "Continue"}
               </Button>
               <Button variant="outline" className="w-full" onClick={() => login(true)} disabled={loading}>
-                Continue as Guest
+                {loading ? "Please wait..." : "Continue as Guest"}
               </Button>
               <Button variant="secondary" className="w-full" onClick={() => login(true, true)} disabled={loading}>
                 <Zap className="h-4 w-4" />
-                Instant Demo Mode
+                {loading ? "Please wait..." : "Instant Demo Mode"}
               </Button>
 
               <p className="text-center text-xs text-muted-foreground">
