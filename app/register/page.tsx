@@ -9,23 +9,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useZyroStore } from "@/lib/store";
+import { VehicleType, WorkingZone } from "@/lib/types";
+
+const vehicleOptions: VehicleType[] = ["BIKE", "SCOOTER", "BICYCLE", "E_BIKE"];
+const zoneOptions: WorkingZone[] = ["LOW_RISK", "MEDIUM_RISK", "HIGH_RISK"];
 
 export default function RegisterPage() {
   const router = useRouter();
   const setUser = useZyroStore((s) => s.setUser);
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
-  const [income, setIncome] = useState("");
+  const [dailyIncome, setDailyIncome] = useState("");
+  const [vehicleType, setVehicleType] = useState<VehicleType>("BIKE");
+  const [workingZone, setWorkingZone] = useState<WorkingZone>("MEDIUM_RISK");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function submit() {
-    if (!name.trim() || !city.trim() || Number(income) <= 0) {
-      setError("Please provide valid name, city, and monthly income.");
+    if (!name.trim() || !city.trim() || Number(dailyIncome) <= 0) {
+      setError("Please provide valid name, city, and daily income.");
       return;
     }
+
     setError("");
     setLoading(true);
+
     try {
       const res = await fetch("/api/user", {
         method: "POST",
@@ -33,17 +41,17 @@ export default function RegisterPage() {
         body: JSON.stringify({
           name: name.trim(),
           city: city.trim(),
-          income: Number(income)
+          dailyIncome: Number(dailyIncome),
+          vehicleType,
+          workingZone
         })
       });
 
-      if (!res.ok) {
-        throw new Error("Registration failed");
-      }
+      if (!res.ok) throw new Error("Registration failed");
 
       const data = await res.json();
       setUser(data.user);
-      router.push("/onboarding");
+      router.push("/plans");
     } catch {
       setError("Unable to register right now. Please try again.");
     } finally {
@@ -61,11 +69,11 @@ export default function RegisterPage() {
           <ThemeToggle />
         </div>
 
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-lg">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-2xl">
           <Card>
             <CardHeader>
-              <CardTitle>Create Account</CardTitle>
-              <CardDescription>Set up your rider profile for weekly income-loss insurance</CardDescription>
+              <CardTitle>Worker Registration</CardTitle>
+              <CardDescription>Set up your protection profile before choosing a weekly policy.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -79,21 +87,53 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Monthly Income (INR)</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={income}
-                  onChange={(event) => setIncome(event.target.value)}
-                  placeholder="24000"
-                />
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Daily Income (INR)</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={dailyIncome}
+                    onChange={(event) => setDailyIncome(event.target.value)}
+                    placeholder="1200"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Vehicle Type</label>
+                  <select
+                    value={vehicleType}
+                    onChange={(event) => setVehicleType(event.target.value as VehicleType)}
+                    className="h-10 w-full rounded-lg border border-border bg-white/60 px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring dark:bg-slate-900/50"
+                  >
+                    {vehicleOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Working Zone</label>
+                  <select
+                    value={workingZone}
+                    onChange={(event) => setWorkingZone(event.target.value as WorkingZone)}
+                    className="h-10 w-full rounded-lg border border-border bg-white/60 px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring dark:bg-slate-900/50"
+                  >
+                    {zoneOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {error ? <p className="text-sm text-rose-500">{error}</p> : null}
 
               <Button className="w-full" onClick={submit} disabled={loading}>
-                {loading ? "Please wait..." : "Continue to Onboarding"}
+                {loading ? "Please wait..." : "Continue to Plan Selection"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 Already have an account? <Link href="/login" className="text-primary">Login</Link>

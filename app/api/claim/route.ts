@@ -1,37 +1,38 @@
 import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import { memoryDb } from "@/lib/mock-db";
-import { ClaimRecord, ClaimStatus } from "@/lib/types";
+import { createAutoClaim, createPayout } from "@/lib/engine";
 import { ClaimModel } from "@/models/Claim";
 import { PayoutModel } from "@/models/Payout";
 
 export async function POST(req: Request) {
   const body = await req.json();
 
-  const approved = body.risk === "HIGH" && body.fraudStatus === "SAFE";
-  const review = body.risk === "HIGH" && body.fraudStatus !== "SAFE";
-
-  const claimStatus: ClaimStatus = approved ? "APPROVED" : review ? "UNDER_REVIEW" : "TRIGGERED";
-
-  const claim: ClaimRecord = {
-    id: crypto.randomUUID(),
-    date: new Date().toISOString(),
+  const claim = createAutoClaim({
     risk: body.risk,
-    fraudStatus: body.fraudStatus,
-    status: claimStatus,
-    payoutAmount: approved ? body.coverage : 0
-  };
+    reason: body.reason ?? "NONE",
+    fraud: {
+      fraudScore: 20,
+      movementScore: 80,
+      claimFrequency: 20,
+      locationAnomaly: 12,
+      status: body.fraudStatus
+    },
+    coverage: body.coverage
+  });
+
+  if (!claim) {
+    return NextResponse.json({ claim: null, payout: null });
+  }
 
   memoryDb.claims.unshift(claim);
 
   let payout = null;
-  if (approved) {
-    payout = {
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
-      amount: body.coverage,
-      claimId: claim.id
-    };
+  if (claim.status === "PAID") {
+    payout = createPayout(claim.id, claim.payoutAmount);
+  }
+
+  if (payout) {
     memoryDb.payouts.unshift(payout);
   }
 
@@ -40,9 +41,11 @@ export async function POST(req: Request) {
     await ClaimModel.create({
       userId: body.userId,
       risk: claim.risk,
+      reason: claim.reason,
       fraudStatus: claim.fraudStatus,
       status: claim.status,
-      payoutAmount: claim.payoutAmount
+      payoutAmount: claim.payoutAmount,
+      timeline: claim.timeline
     });
     if (payout) {
       await PayoutModel.create({ claimId: payout.claimId, amount: payout.amount });

@@ -3,15 +3,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { AlertTriangle, CloudFog, CloudRain, Loader2, Siren, SunMedium, Wallet2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  CloudFog,
+  CloudRain,
+  Loader2,
+  Siren,
+  SunMedium,
+  TrafficCone,
+  Waves,
+  Wallet2,
+  ShieldCheck,
+  Activity,
+  Clock3
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useZyroStore } from "@/lib/store";
 import { ClaimStatus } from "@/lib/types";
+import { AI_TRANSPARENCY_NOTE } from "@/lib/insurance";
 import { cn, rupee } from "@/lib/utils";
 
-type SimType = "rain" | "pollution" | "fraud";
+type SimType = "rain" | "heat" | "pollution" | "flood" | "curfew" | "fraud";
 
 const CACHE_TTL = 1000 * 60 * 3;
 
@@ -27,6 +42,21 @@ export default function DashboardPage() {
     latestPayout,
     claimHistory,
     payoutHistory,
+    notifications,
+    activePolicy,
+    aiAdjustedPremium,
+    riskProbability,
+    walletBalance,
+    economics,
+    premiumModel,
+    aiInsights,
+    claimsThisWeek,
+    incomeProtected,
+    payoutRatio,
+    lossRatio,
+    policyExpiryDays,
+    nextPremiumAdjustment,
+    policyLifecycle,
     dashboardCacheTs,
     demoMode,
     setRisk,
@@ -34,12 +64,17 @@ export default function DashboardPage() {
     setClaimStatus,
     setFraud,
     hydrateDashboardLite,
-    hydrateDashboardHeavy
+    hydrateDashboardHeavy,
+    setPolicy,
+    setPolicyHistory,
+    setAiAdjustedPremium,
+    setPremiumTrend,
+    setWalletBalance
   } = useZyroStore();
 
   const [bootLoading, setBootLoading] = useState(false);
   const [heavyLoading, setHeavyLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<SimType | null>(null);
 
   const hasLiteData = Boolean(user && plan);
   const cacheFresh = useMemo(() => Date.now() - dashboardCacheTs < CACHE_TTL, [dashboardCacheTs]);
@@ -59,6 +94,8 @@ export default function DashboardPage() {
         if (!res.ok) throw new Error("Failed to load dashboard");
         const data = await res.json();
         hydrateDashboardLite(data);
+        setAiAdjustedPremium(data.aiAdjustedPremium ?? 40);
+        setWalletBalance(data.walletBalance ?? 0);
       } catch {
         if (!user) router.push("/login");
       } finally {
@@ -66,14 +103,12 @@ export default function DashboardPage() {
       }
     }
 
-    if (!hasLiteData || !cacheFresh) {
-      loadLite();
-    }
+    if (!hasLiteData || !cacheFresh) loadLite();
 
     return () => {
       mounted = false;
     };
-  }, [hasLiteData, cacheFresh, user, router, demoMode, hydrateDashboardLite]);
+  }, [hasLiteData, cacheFresh, user, router, demoMode, hydrateDashboardLite, setAiAdjustedPremium, setWalletBalance]);
 
   useEffect(() => {
     if (!user) return;
@@ -92,23 +127,38 @@ export default function DashboardPage() {
         setMetrics(data.metrics);
         setRisk(data.risk);
         if (data.fraud) setFraud(data.fraud);
-      } catch {
-        // Keep existing cached state if background load fails.
+        setPolicy(data.activePolicy ?? null);
+        setPolicyHistory(data.policies ?? []);
+        setAiAdjustedPremium(data.aiAdjustedPremium ?? 40);
+        setPremiumTrend(data.premiumTrend ?? []);
+        setWalletBalance(data.walletBalance ?? 0);
       } finally {
         if (mounted) setHeavyLoading(false);
       }
-    }, 50);
+    }, 80);
 
     return () => {
       mounted = false;
       clearTimeout(timer);
     };
-  }, [user, demoMode, hydrateDashboardHeavy, setMetrics, setRisk, setFraud]);
+  }, [
+    user,
+    demoMode,
+    hydrateDashboardHeavy,
+    setMetrics,
+    setRisk,
+    setFraud,
+    setPolicy,
+    setPolicyHistory,
+    setAiAdjustedPremium,
+    setPremiumTrend,
+    setWalletBalance
+  ]);
 
   async function simulate(mode: SimType) {
-    if (!user || !plan) return;
+    if (!user) return;
 
-    setActionLoading(true);
+    setActionLoading(mode);
     try {
       const res = await fetch("/api/dashboard", {
         method: "POST",
@@ -117,28 +167,29 @@ export default function DashboardPage() {
           action: "simulate",
           mode,
           userId: user.id,
-          coverage: plan.coverage,
+          coverage: activePolicy?.coverage ?? plan?.coverage,
           demo: demoMode
         })
       });
 
       if (!res.ok) throw new Error("Simulation failed");
-
       const data = await res.json();
       setMetrics(data.metrics);
       setRisk(data.risk);
       setFraud(data.fraud);
-      hydrateDashboardHeavy({
-        claims: data.claims,
-        payouts: data.payouts,
-        payout: data.payout,
-        fraud: data.fraud
-      });
+      hydrateDashboardHeavy(data);
+      setPolicy(data.activePolicy ?? null);
+      setAiAdjustedPremium(data.aiAdjustedPremium ?? aiAdjustedPremium);
+      setWalletBalance(data.walletBalance ?? walletBalance);
 
       const nextClaimStatus: ClaimStatus = data.claim
-        ? data.claim.status === "APPROVED"
-          ? "APPROVED"
-          : "UNDER_REVIEW"
+        ? data.claim.status === "PAID"
+          ? "PAID"
+          : data.claim.status === "APPROVED"
+            ? "APPROVED"
+            : data.claim.status === "REJECTED"
+              ? "REJECTED"
+              : "PENDING"
         : mode === "fraud"
           ? "UNDER_REVIEW"
           : data.risk === "HIGH"
@@ -146,124 +197,232 @@ export default function DashboardPage() {
             : "IDLE";
 
       setClaimStatus(nextClaimStatus);
-    } catch {
-      // Preserve the current UI state if simulation fails.
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   }
 
-  if (bootLoading && !hasLiteData) {
-    return <DashboardSkeleton />;
-  }
+  if (bootLoading && !hasLiteData) return <DashboardSkeleton />;
+
+  const latestClaim = claimHistory[0];
 
   return (
-    <div className="space-y-4">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <InfoCard label="Rider" value={user?.name ?? "-"} sub={`${user?.city ?? "-"} | Income ${rupee(user?.income ?? 0)}`} />
-        <InfoCard label="Weekly Plan" value={plan?.name ?? "Not selected"} sub={`Premium ${rupee(plan?.premium ?? 0)}`} />
-        <InfoCard label="Coverage" value={rupee(plan?.coverage ?? 0)} sub="Per approved disruption" />
-        <StatusCard label="Risk" status={risk} />
-        <StatusCard label="Claim" status={claimStatus.replace("_", " ")} />
+    <div className="page-stack">
+      <section className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Income Protected" value={rupee(incomeProtected)} sub="Total covered income restored" icon={ShieldCheck} />
+        <KpiCard label="Current Risk Level" value={risk} sub={`${((riskProbability ?? 0) * 100).toFixed(1)}% disruption probability`} icon={AlertTriangle} />
+        <KpiCard label="Active Coverage" value={rupee(activePolicy?.coverage ?? plan?.coverage ?? 0)} sub="Current policy coverage limit" icon={ShieldCheck} />
+        <KpiCard label="Claim Status" value={claimStatus.replace("_", " ")} sub={latestClaim?.approvalReason ?? latestClaim?.rejectionReason ?? "No active claim"} icon={Activity} />
+        <KpiCard label="Wallet Balance" value={rupee(walletBalance)} sub={`${payoutHistory.length} credited payouts`} icon={Wallet2} />
+        <KpiCard label="Policy Expiry" value={policyExpiryDays ? `${policyExpiryDays} day(s)` : "-"} sub={activePolicy ? "Renew before expiry" : "No active policy"} icon={Clock3} />
+        <KpiCard label="AI Premium" value={rupee(aiAdjustedPremium)} sub="Current weekly adjusted premium" icon={Wallet2} />
+        <KpiCard label="Fraud Risk" value={fraud?.riskLevel ?? "LOW"} sub={`${fraud?.fraudScore ?? 0}% fraud score`} icon={Siren} />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-3">
+      <section className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Income Risk Summary</CardTitle>
+            <CardDescription>Worker economics, risk exposure, and recommended protection.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-6 space-y-0 md:grid-cols-2 lg:grid-cols-3 text-sm">
+            <Metric label="Hourly Income" value={rupee(economics?.hourlyIncome ?? 0)} />
+            <Metric label="Loss / Disruption" value={rupee(economics?.incomeLossPerDisruption ?? 0)} />
+            <Metric label="Recommended Coverage" value={rupee(economics?.recommendedCoverage ?? 0)} />
+            <Metric label="Recommended Premium" value={rupee(economics?.recommendedPremium ?? 0)} />
+            <Metric label="Policy Expiry" value={policyExpiryDays ? `${policyExpiryDays} day(s)` : "-"} />
+            <Metric label="Next Premium Adjustment" value={nextPremiumAdjustment ? new Date(nextPremiumAdjustment).toLocaleDateString() : "-"} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4 text-primary" /> Notifications</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(notifications.length ? notifications.slice(0, 5) : []).map((item) => (
+              <div key={item.id} className="rounded-lg border border-border/70 bg-white/45 p-2 text-xs dark:bg-slate-950/30">
+                <p className="font-semibold">{item.title}</p>
+                <p className="text-muted-foreground">{item.description}</p>
+              </div>
+            ))}
+            {!notifications.length ? <p className="text-xs text-muted-foreground">No notifications yet.</p> : null}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>
-            <CardTitle>Environment Live Panel</CardTitle>
-            <CardDescription>AI model inputs for parametric trigger</CardDescription>
+            <CardTitle>Automated Disruption Triggers</CardTitle>
+            <CardDescription>Risk Monitoring {"->"} Fraud Check {"->"} Claim Decision {"->"} Payout</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Metric icon={CloudRain} label="Rainfall" value={`${metrics.rainfall} mm`} />
-              <Metric icon={SunMedium} label="Temperature" value={`${metrics.temperature} C`} />
-              <Metric icon={CloudFog} label="AQI" value={`${metrics.aqi}`} />
+            <div className="mb-4 grid gap-3 sm:grid-cols-5">
+              <Metric label="Rainfall" value={`${metrics.rainfall} mm`} />
+              <Metric label="Temp" value={`${metrics.temperature} C`} />
+              <Metric label="AQI" value={`${metrics.aqi}`} />
+              <Metric label="Flood" value={metrics.floodAlert ? "Alert" : "Normal"} />
+              <Metric label="Curfew" value={metrics.curfewTrafficAlert ? "Alert" : "Normal"} />
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-3">
+              <TriggerButton loading={actionLoading === "rain"} label="Simulate Rain" onClick={() => simulate("rain")} />
+              <TriggerButton loading={actionLoading === "heat"} label="Simulate Heatwave" onClick={() => simulate("heat")} />
+              <TriggerButton loading={actionLoading === "pollution"} label="Simulate Pollution" onClick={() => simulate("pollution")} />
+              <TriggerButton loading={actionLoading === "flood"} label="Simulate Flood" onClick={() => simulate("flood")} />
+              <TriggerButton loading={actionLoading === "curfew"} label="Simulate Curfew" onClick={() => simulate("curfew")} />
+              <TriggerButton loading={actionLoading === "fraud"} label="Simulate Fraud" onClick={() => simulate("fraud")} />
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Demo Controls</CardTitle>
-            <CardDescription>Single-call scenario simulation</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button className="w-full" disabled={actionLoading} onClick={() => simulate("rain")}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {actionLoading ? "Please wait..." : "Simulate Rain"}
-            </Button>
-            <Button className="w-full" variant="outline" disabled={actionLoading} onClick={() => simulate("pollution")}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {actionLoading ? "Please wait..." : "Simulate Pollution"}
-            </Button>
-            <Button className="w-full" variant="secondary" disabled={actionLoading} onClick={() => simulate("fraud")}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {actionLoading ? "Please wait..." : "Simulate Fraud"}
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" /> Fraud Snapshot
-            </CardTitle>
+            <CardTitle>Portfolio KPIs</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <Line label="Fraud Score" value={fraud ? `${fraud.fraudScore}%` : "-"} />
-            <Line label="Movement" value={fraud ? `${fraud.movementScore}%` : "-"} />
-            <Line label="Claim Frequency" value={fraud ? `${fraud.claimFrequency}%` : "-"} />
-            <Line label="Anomaly" value={fraud ? `${fraud.locationAnomaly}%` : "-"} />
-            <Badge tone={fraud?.status === "FRAUD" ? "danger" : fraud?.status === "UNDER REVIEW" ? "warning" : "success"}>
-              {fraud?.status ?? "SAFE"}
-            </Badge>
-            {heavyLoading ? <p className="text-xs text-muted-foreground">Refreshing detailed data...</p> : null}
+            <Line label="Claims This Week" value={`${claimsThisWeek}`} />
+            <Line label="Income Protected" value={rupee(incomeProtected)} />
+            <Line label="Payout Ratio" value={`${(payoutRatio * 100).toFixed(1)}%`} />
+            <Line label="Loss Ratio" value={`${(lossRatio * 100).toFixed(1)}%`} />
+            <Line label="Fraud Risk" value={fraud?.riskLevel ?? "-"} />
+            <Badge tone={risk === "HIGH" ? "danger" : "success"}>{risk === "HIGH" ? "High Exposure" : "Stable"}</Badge>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Fraud Snapshot</CardTitle>
+            <CardDescription>Interpretation-first fraud analysis for claim trust decisions.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <Line label="Fraud Probability" value={`${(((fraud?.fraudProbability ?? 0) || (fraud?.fraudScore ?? 0) / 100) * 100).toFixed(1)}%`} />
+            <Line label="Movement Integrity" value={`${fraud?.movementScore ?? 0}%`} />
+            <Line label="Location Anomaly" value={`${fraud?.locationAnomaly ?? 0}%`} />
+            <Line label="Device Consistency" value={`${fraud?.deviceConsistencyScore ?? 0}%`} />
+            <Line label="Decision" value={fraud?.status ?? "SAFE"} />
+            <p className="text-xs text-muted-foreground">
+              {fraud?.status === "FRAUD"
+                ? "High anomaly concentration detected. Claims move to rejection workflow."
+                : fraud?.status === "UNDER REVIEW"
+                  ? "Signals are mixed. Claim kept under review until confidence improves."
+                  : "Signals are stable. Claim automation remains eligible."}
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wallet2 className="h-4 w-4 text-emerald-500" /> Payout Status
-            </CardTitle>
+            <CardTitle>Actuarial Pricing Breakdown</CardTitle>
           </CardHeader>
-          <CardContent>
-            <motion.div
-              className={cn(
-                "rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4",
-                latestPayout > 0 && "animate-pulse-success"
-              )}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <p className="text-xs text-emerald-600 dark:text-emerald-400">Latest payout</p>
-              <p className="font-display text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                {latestPayout ? `${rupee(latestPayout)} credited successfully` : "No payout yet"}
-              </p>
-            </motion.div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              Total claims: {claimHistory.length} | Total payouts: {payoutHistory.length}
-            </div>
+          <CardContent className="space-y-2 text-sm">
+            <Line label="Risk Probability" value={`${((premiumModel?.riskProbability ?? 0) * 100).toFixed(1)}%`} />
+            <Line label="Expected Loss" value={rupee(premiumModel?.expectedLoss ?? 0)} />
+            <Line label="Risk Loading" value={rupee(premiumModel?.riskLoading ?? 0)} />
+            <Line label="Platform Cost" value={rupee(premiumModel?.platformCost ?? 0)} />
+            <Line label="Safety Margin" value={rupee(premiumModel?.safetyMargin ?? 0)} />
+            <Line label="Final Premium" value={rupee(premiumModel?.finalPremium ?? aiAdjustedPremium)} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Decision Confidence</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <Line label="Risk Decision" value={`${aiInsights?.risk.decision ?? "-"} (${aiInsights?.risk.confidence ?? "-"})`} />
+            <Line label="Fraud Decision" value={`${aiInsights?.fraud.decision ?? "-"} (${aiInsights?.fraud.confidence ?? "-"})`} />
+            <Line label="Premium Decision" value={`${aiInsights?.premium.decision ?? "-"}`} />
+            <Line label="Claim Decision" value={`${aiInsights?.claim.decision ?? "-"}`} />
+            <p className="text-xs text-muted-foreground">{aiInsights?.claim.reason ?? AI_TRANSPARENCY_NOTE}</p>
           </CardContent>
         </Card>
       </section>
+
+      {latestClaim ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Claim Timeline</CardTitle>
+            <CardDescription>
+              Reason: {(latestClaim.reason ?? "NONE").replace("_", " ")} | Confidence: {latestClaim.confidenceScore ?? 0}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 md:grid-cols-2">
+            {(latestClaim.timeline ?? []).map((item, index) => (
+              <div key={`${item.step}-${index}`} className="rounded-lg border border-border/70 bg-white/45 p-3 text-sm dark:bg-slate-950/30">
+                <p className="font-medium">{item.step}</p>
+                <p className="text-xs text-muted-foreground">{item.status.toUpperCase()}</p>
+              </div>
+            ))}
+            <div className="rounded-lg border border-border/70 bg-white/45 p-3 text-sm dark:bg-slate-950/30">
+              <p className="font-medium">Payout</p>
+              <p className="text-xs text-muted-foreground">
+                Eligible {rupee(latestClaim.eligibleAmount ?? 0)} | Deductible {rupee(latestClaim.deductible ?? 0)} | Paid {rupee(latestClaim.payoutAmount)}
+              </p>
+              <p className="text-xs text-muted-foreground">{latestClaim.approvalReason ?? latestClaim.rejectionReason ?? "Pending decision"}</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {risk === "HIGH" ? (
         <Card className="border-rose-500/50">
           <CardContent className="flex items-center gap-2 py-4 text-sm text-rose-500">
-            <Siren className="h-4 w-4" /> Environmental risk is HIGH. Claim trigger flow executed automatically.
+            <Siren className="h-4 w-4" /> Disruption detected. Zero-touch claim pipeline executed.
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Policy Lifecycle Workflow</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-6 space-y-0 md:grid-cols-2 text-sm">
+          {(policyLifecycle.length
+            ? policyLifecycle
+            : [
+                { step: "Applied", status: "active" },
+                { step: "Risk Assessed", status: "pending" },
+                { step: "Premium Calculated", status: "pending" },
+                { step: "Active", status: "pending" },
+                { step: "Monitoring", status: "pending" },
+                { step: "Claim", status: "pending" },
+                { step: "Payout", status: "pending" },
+                { step: "Expired", status: "pending" },
+                { step: "Renewal", status: "pending" }
+              ]
+          ).map((item) => (
+            <div key={item.step} className="flex h-20 w-full items-center justify-between rounded-lg border border-border/70 bg-white/45 p-3 dark:bg-slate-950/30">
+              <span className="font-medium">{item.step}</span>
+              <Badge className="min-w-[72px] justify-center" tone={item.status === "done" ? "success" : item.status === "active" ? "warning" : "default"}>
+                {item.status}
+              </Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground">{AI_TRANSPARENCY_NOTE}</p>
+      {heavyLoading ? <p className="text-xs text-muted-foreground">Refreshing underwriting insights...</p> : null}
     </div>
+  );
+}
+
+function TriggerButton({ loading, label, onClick }: { loading: boolean; label: string; onClick: () => void }) {
+  return (
+    <Button className="w-full" variant="outline" disabled={loading} onClick={onClick}>
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+      {loading ? "Please wait..." : label}
+    </Button>
   );
 }
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-4">
+    <div className="page-stack">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-24 animate-pulse rounded-xl border border-border/70 bg-muted/40" />
@@ -277,40 +436,29 @@ function DashboardSkeleton() {
   );
 }
 
-function InfoCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function KpiCard({ label, value, sub, icon: Icon }: { label: string; value: string; sub: string; icon: React.ComponentType<{ className?: string }> }) {
   return (
-    <Card>
-      <CardContent className="py-5">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-1 font-display text-xl font-semibold">{value}</p>
-        <p className="text-xs text-muted-foreground">{sub}</p>
+    <Card className="h-full">
+      <CardContent className="flex min-h-[120px] flex-col justify-between py-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <Icon className="h-4 w-4 text-primary" />
+        </div>
+        <p className="mt-1 font-display text-xl font-semibold leading-tight">{value}</p>
+        <p className="line-clamp-2 text-xs text-muted-foreground">{sub}</p>
       </CardContent>
     </Card>
   );
 }
 
-function StatusCard({ label, status }: { label: string; status: string }) {
-  const tone = status.includes("HIGH") ? "danger" : status.includes("REVIEW") ? "warning" : "success";
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
-      <CardContent className="py-5">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <Badge className="mt-2" tone={tone as "danger" | "warning" | "success"}>
-          {status}
-        </Badge>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Metric({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-white/45 p-4 dark:bg-slate-950/30">
+    <div className="flex min-h-[84px] h-full flex-col justify-between rounded-xl border border-border/70 bg-white/45 p-3 dark:bg-slate-950/30">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{label}</p>
-        <Icon className="h-4 w-4 text-primary" />
+        <Clock3 className="h-3 w-3 text-primary" />
       </div>
-      <p className="mt-1 text-xl font-semibold">{value}</p>
+      <p className="mt-1 text-base font-semibold leading-tight">{value}</p>
     </div>
   );
 }

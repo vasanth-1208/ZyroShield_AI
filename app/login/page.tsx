@@ -41,7 +41,9 @@ export default function LoginPage() {
           action: "login",
           name: username,
           city: "Bengaluru",
-          income: 22000,
+          dailyIncome: 1200,
+          vehicleType: "BIKE",
+          workingZone: "MEDIUM_RISK",
           demo
         })
       });

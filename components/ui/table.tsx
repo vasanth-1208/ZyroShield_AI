@@ -18,9 +18,9 @@ export function TR({ className, ...props }: React.HTMLAttributes<HTMLTableRowEle
 }
 
 export function TH({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("h-10 px-2 text-left align-middle text-xs font-semibold text-muted-foreground", className)} {...props} />;
+  return <th className={cn("h-10 whitespace-nowrap px-2 text-left align-middle text-xs font-semibold text-muted-foreground", className)} {...props} />;
 }
 
 export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("p-2 align-middle", className)} {...props} />;
+  return <td className={cn("px-2 py-2 align-top", className)} {...props} />;
 }

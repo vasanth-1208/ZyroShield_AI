@@ -48,13 +48,31 @@ body {
 }
 
 body {
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(240, 249, 255, 0.35));
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(14, 165, 233, 0.16), transparent 30%),
+    radial-gradient(circle at 92% 0%, rgba(16, 185, 129, 0.14), transparent 28%),
+    radial-gradient(circle at 50% 100%, rgba(249, 115, 22, 0.14), transparent 35%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(240, 249, 255, 0.5));
+  background-attachment: fixed;
 }
 
 .dark body {
-  background-image: linear-gradient(135deg, rgba(2, 6, 23, 0.6), rgba(15, 23, 42, 0.45));
+  background-image:
+    radial-gradient(circle at 12% 0%, rgba(14, 116, 144, 0.24), transparent 32%),
+    radial-gradient(circle at 88% 10%, rgba(5, 150, 105, 0.2), transparent 30%),
+    radial-gradient(circle at 50% 100%, rgba(194, 65, 12, 0.18), transparent 36%),
+    linear-gradient(135deg, rgba(2, 6, 23, 0.8), rgba(15, 23, 42, 0.62));
+  background-attachment: fixed;
 }
 
 .glass {
-  @apply border border-white/30 dark:border-white/10 bg-white/65 dark:bg-slate-900/55 backdrop-blur-xl;
+  @apply border border-white/35 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl shadow-glow;
+}
+
+.page-stack {
+  @apply space-y-6;
+}
+
+.page-grid {
+  @apply grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3;
 }
